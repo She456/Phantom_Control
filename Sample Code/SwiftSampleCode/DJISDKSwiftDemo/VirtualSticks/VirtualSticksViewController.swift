@@ -77,6 +77,7 @@ class VirtualSticksViewController: UIViewController {
     var show_timer: Timer?
 
     // Send Control Data에 이용
+    @IBOutlet weak var control_value: UITextField!
     var radians: Float = 0.0
     let velocity: Float = 0.1
     var x: Float = 0.0
@@ -160,6 +161,13 @@ class VirtualSticksViewController: UIViewController {
     
     @IBOutlet weak var throttle_A: UILabel!
     @IBOutlet weak var yaw_A: UILabel!
+    
+    // p-control
+    let maxS: Float = 0.1 //max speed
+    let minS: Float = 0.05 //min speed
+    let d_max: Float = 0.1 //max speed at dx > d_max
+    let d_min: Float = 0.025 //min speed at dx = d_min
+    
     
     // Vision Positioning
     @IBOutlet weak var Vision: UILabel!
@@ -250,6 +258,15 @@ class VirtualSticksViewController: UIViewController {
         }
     }
     
+    @IBAction func changeRollPitchControlMode(_ sender: UISegmentedControl) {
+        
+        if sender.selectedSegmentIndex == 0 {
+            self.flightController?.rollPitchControlMode = DJIVirtualStickRollPitchControlMode.velocity
+        } else if sender.selectedSegmentIndex == 1 {
+            self.flightController?.rollPitchControlMode = DJIVirtualStickRollPitchControlMode.angle
+        }
+    }
+    
     // User clicks the enter virtual sticks button
     @IBAction func enableVirtualSticks(_ sender: Any) {
         toggleVirtualSticks(enabled: true)
@@ -305,7 +322,7 @@ class VirtualSticksViewController: UIViewController {
         // Schedule the timer at 20Hz while the default specified for DJI is between 5 and 25Hz
         // Note: changing the frequency will have an impact on the distance flown so BE CAREFUL
         timer = Timer.scheduledTimer(timeInterval: 0.05, target: self, selector: #selector(timerLoop), userInfo: nil, repeats: true)
-        timer2 = Timer.scheduledTimer(timeInterval: 0.01, target: self, selector: #selector(stop), userInfo: nil, repeats: true)
+//        timer2 = Timer.scheduledTimer(timeInterval: 0.01, target: self, selector: #selector(stop), userInfo: nil, repeats: true)
     }
     
     @IBAction func back(_ sender: UIButton) {
@@ -315,7 +332,7 @@ class VirtualSticksViewController: UIViewController {
         // Schedule the timer at 20Hz while the default specified for DJI is between 5 and 25Hz
         // Note: changing the frequency will have an impact on the distance flown so BE CAREFUL
         timer = Timer.scheduledTimer(timeInterval: 0.05, target: self, selector: #selector(timerLoop), userInfo: nil, repeats: true)
-        timer2 = Timer.scheduledTimer(timeInterval: 0.01, target: self, selector: #selector(stop), userInfo: nil, repeats: true)
+//        timer2 = Timer.scheduledTimer(timeInterval: 0.01, target: self, selector: #selector(stop), userInfo: nil, repeats: true)
     }
     
     @IBAction func right(_ sender: UIButton) {
@@ -325,7 +342,7 @@ class VirtualSticksViewController: UIViewController {
         // Schedule the timer at 20Hz while the default specified for DJI is between 5 and 25Hz
         // Note: changing the frequency will have an impact on the distance flown so BE CAREFUL
         timer = Timer.scheduledTimer(timeInterval: 0.05, target: self, selector: #selector(timerLoop), userInfo: nil, repeats: true)
-        timer2 = Timer.scheduledTimer(timeInterval: 0.01, target: self, selector: #selector(stop), userInfo: nil, repeats: true)
+//        timer2 = Timer.scheduledTimer(timeInterval: 0.01, target: self, selector: #selector(stop), userInfo: nil, repeats: true)
     }
     
     @IBAction func left(_ sender: UIButton) {
@@ -334,8 +351,8 @@ class VirtualSticksViewController: UIViewController {
         
         // Schedule the timer at 20Hz while the default specified for DJI is between 5 and 25Hz
         // Note: changing the frequency will have an impact on the distance flown so BE CAREFUL
-        timer = Timer.scheduledTimer(timeInterval: 0.05, target: self, selector: #selector(timerLoop), userInfo: nil, repeats: false)
-        timer2 = Timer.scheduledTimer(timeInterval: 0.01, target: self, selector: #selector(stop), userInfo: nil, repeats: true)
+        timer = Timer.scheduledTimer(timeInterval: 0.05, target: self, selector: #selector(timerLoop), userInfo: nil, repeats: true)
+//        timer2 = Timer.scheduledTimer(timeInterval: 0.01, target: self, selector: #selector(stop), userInfo: nil, repeats: true)
         
     }
     
@@ -664,7 +681,7 @@ class VirtualSticksViewController: UIViewController {
         let val = (value! as NSString).floatValue
         
         if mode == "x" {
-            let result = CGFloat((val+0.9)/3*700)
+            let result = CGFloat((-val+0.9)/3*700)
             return result
         } else if mode == "y" {
             let result = CGFloat((val-1.2)/(-3)*700)
@@ -681,7 +698,7 @@ class VirtualSticksViewController: UIViewController {
         
         // Add velocity to radians before we do any calculation
         radians += velocity
-        
+        let c_value = (control_value.text! as NSString).floatValue
         // Determine the flight mode so we can set the proper values
         switch flightMode {
             case .HOVERING:
@@ -691,33 +708,33 @@ class VirtualSticksViewController: UIViewController {
                 yaw = 0
             case .FORWARD:
                 x = 0
-                y = 0.5
+                y = c_value
                 z = 0
                 yaw = 0
             case .BACK:
                 x = 0
-                y = -0.5
+                y = -c_value
                 z = 0
                 yaw = 0
             case .RIGHT:
-                x = 0.5
+                x = c_value
                 y = 0
                 z = 0
                 yaw = 0
             case .LEFT:
-                x = -0.5
+                x = -c_value
                 y = 0
                 z = 0
                 yaw = 0
             case .UP:
                 x = 0
                 y = 0
-                z = 0.5
+                z = c_value
                 yaw = 0
             case .DOWN:
                 x = 0
                 y = 0
-                z = -0.5
+                z = -c_value
                 yaw = 0
             case .TURN_RIGHT:
                 x = 0
@@ -731,29 +748,32 @@ class VirtualSticksViewController: UIViewController {
                 yaw = -30
             case .GO:
                 
-                let maxSpeed: Float = 0.2
+                let maxSpeed: Float = 0.1 //only for throttle
+                
+                let dS: Float = maxS - minS
+                let d_minmax: Float = d_max - d_min
             
                 if px < 0.9 && px > -1.2 && py < 1.2 && py > -1.2 {
-                    if dx > 0.1 {
-                        x = maxSpeed
-                    } else if dx > 0.025 {
-                        x = dx * maxSpeed * 10
-                    } else if dx < -0.025 {
-                        x = dx * maxSpeed * 10
-                    } else if dx < -0.1 {
-                        x = -maxSpeed
+                    if dx > d_max {
+                        x = maxS
+                    } else if dx > d_min {
+                        x = maxS - (d_max - dx) * dS / d_minmax
+                    } else if dx < -d_max {
+                        x = -maxS
+                    } else if dx < -d_min {
+                        x = -maxS + (d_max + dx) * dS / d_minmax
                     } else {
                         x = 0
                     }
                     
-                    if dy > 0.1 {
-                        y = maxSpeed
-                    } else if dy > 0.025 {
-                        y = dy * maxSpeed * 10
-                    } else if dy < -0.025 {
-                        y = dy * maxSpeed * 10
-                    } else if dy < -0.1 {
-                        y = -maxSpeed
+                    if dy > d_max {
+                        y = maxS
+                    } else if dy > d_min {
+                        y = maxS - (d_max - dy) * dS / d_minmax
+                    } else if dy < -d_max {
+                        y = -maxS
+                    } else if dy < -d_min {
+                        y = -maxS + (d_max + dy) * dS / d_minmax
                     } else {
                         y = 0
                     }
@@ -796,8 +816,15 @@ class VirtualSticksViewController: UIViewController {
         // Construct the flight control data object
         var controlData = DJIVirtualStickFlightControlData()
         controlData.verticalThrottle = z //throttle // in m/s
+        
         controlData.roll = y //roll
         controlData.pitch = x //pitch
+        
+        if self.flightController?.rollPitchControlMode == DJIVirtualStickRollPitchControlMode.angle {
+            controlData.roll = x //roll
+            controlData.pitch = -y //pitch
+        }
+        
         controlData.yaw = yaw
         
         // Send the control data to the FC
